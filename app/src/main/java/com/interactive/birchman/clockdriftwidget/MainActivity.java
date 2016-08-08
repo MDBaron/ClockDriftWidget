@@ -20,17 +20,32 @@ import java.text.SimpleDateFormat;
 
 public class MainActivity extends AppCompatActivity {
 
+    //I don't trust Async's .close(), so this is some extra insurance
     public Boolean isRunning = false;
+
+    //Work-horse Async task for this endeavor
     private AsyncTask mTask;
+
+    //Work-horse variables
+    int iterations = 0;
+    double avg = 0.0;
     double offset = 0.0;
     double sysTimeDiff = 0.0;
     double sysTime = 0.0;
     double netTime = 0.0;
     double timeDev = 0.0;
 
+    //Clock Drift Tiers for selecting color
+    double base = 0.0; //TO-DO: Allow user to set these values at run-time?
+    double tier1 = 1.0; //1 minute
+    double tier2 = 5.0; //5 minutes
+
+    //Data logging strings
     String timeString = "";
-    String timeColor = "#9E9E9E";
+    String timeColor = "#9E9E9E"; //Default color is "Brad" Gray
     private String fileName = "Clock_Log";
+    private String email = "tehmatty86@gmail.com"; //TO-DO: Add a mechanism for user to manually type in email address
+    private String emailSubject = "Clock Drift Data"; //TO-DO: Same as above, but add to subject-line some sort of identifier for the device that is transmitting?
 
     FileOutputStream fos = null;
 
@@ -39,7 +54,7 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         this.findViewById(android.R.id.content).setBackgroundColor(Color.parseColor("#9E9E9E"));
-    }
+    }//onCreate
 
     /**
      * Poll Current system time, and look for network time.
@@ -48,6 +63,7 @@ public class MainActivity extends AppCompatActivity {
         //Check and Set 'running' flag for this button
         Button butt = (Button) findViewById(R.id.poll_button);
 
+        //isRunning governs while loop operation for this ASync Task, cancel() will not necessarily halt the loop at the correct time
         if (isRunning) {
             isRunning = false;
             butt.setText("Begin Polling");
@@ -58,54 +74,68 @@ public class MainActivity extends AppCompatActivity {
             butt.setText("Stop Polling...");
             mTask = new TimeCop().execute();
         }
-    }
+    }//pollTime
 
     public void setTime(String time, String color) {
+
         //Call runOnUIThread to allow AsyncTask to change View indirectly
         //Convert system time into Hours and minutes
         SimpleDateFormat df = new SimpleDateFormat("HH:mm:ss");
         timeString = df.format(sysTime);
-        //Switch statement for text Color selection according to "Drift"
+        //save delta as ms for later use
         timeDev = sysTimeDiff;
-        sysTimeDiff = sysTimeDiff/1000/60;
-        if(sysTimeDiff > 5){
+        //Convert delta from millis -> seconds -> minutes
+        sysTimeDiff = (sysTimeDiff/1000)/60;
+
+        //Switch statement for text Color selection according to "Drift"
+        if(sysTimeDiff > tier2){
+
             // Red -> More than 5 minutes
             timeColor = "#F44336";
-        } else if(sysTimeDiff < 5 && sysTimeDiff > 1){
+        } else if(sysTimeDiff < tier2 && sysTimeDiff > tier1){
+
             // Green -> Less than 5 minutes
             timeColor = "#4CAF50";
-        } else if(sysTimeDiff < 1 && sysTimeDiff > 0){
+        } else if(sysTimeDiff < tier1 && sysTimeDiff > base){
+
             // Yellow -> Less than a minute
             timeColor = "#FFEB3B";
         } else {
+
             // Gray -> Unknown
             timeColor = "#9E9E9E";
         }
         setTimeUI(timeString, timeColor, Double.toString(timeDev));
-    }
+    }//setTime
 
     public void setTimeUI(String time, String color, String deviation) {
-    final String t = time;
-    final String c = color;
+
+        //Need to 'final' these to call runOnUIThread()
+        final String t = time;
+        final String c = color;
         final String d = deviation;
-    runOnUiThread(new Runnable() {
-        @Override
-        public void run () {
-            TextView currentTime = (TextView) findViewById(R.id.current_time);
-            currentTime.setText(String.valueOf(t));
-            currentTime.setBackgroundColor(Color.parseColor(c));
-            TextView logView = (TextView) findViewById(R.id.log_View);
-            String log = "Current Clock drift of " + d + "milliseconds at " + t + "\n";
-            logView.setText(log);
-            storeLog(log);
-        }
+        runOnUiThread(new Runnable() {
+             @Override
+            public void run () {
+
+                 //Fill current time to textView
+                 TextView currentTime = (TextView) findViewById(R.id.current_time);
+                 currentTime.setText(String.valueOf(t));
+                 //Set background to the 'drift' color
+                 currentTime.setBackgroundColor(Color.parseColor(c));
+                 //Parse data to screen and local storage
+                 TextView logView = (TextView) findViewById(R.id.log_View);
+                 String log = "Current Drift: " + d + "milliseconds at " + t + "\n" + "Average Drift: " + avg + "\n";
+                 logView.setText(log);
+                 storeLog(log);
+        }//run
     }
     );
-}
+}//setTimeUI
 
 
     public void storeLog(String str){
-        //TO-DO: Split stored data with /n
+        //We need to store this locally, which is a breeze on Android
 
         try {
             fos = openFileOutput(fileName, MODE_APPEND);
@@ -123,18 +153,20 @@ public class MainActivity extends AppCompatActivity {
             e.printStackTrace();
         }
 
-    }
+    }//storeLog
 
     public void fudgeTime(View view){
         //Add a substantial time event
-        offset = 1000000;
-    }
+        offset = 1000000; //TO-DO: Could make this random to simulate time event data
+    }//fudgeTime
 
     /**
      * For debugging purposes
      */
     public void reset(View view){
         //Reset time tracking for current session
+        iterations = 0;
+        avg = 0.0;
         offset = 0.0;
         sysTimeDiff = 0.0;
         netTime = 0.0;
@@ -147,13 +179,15 @@ public class MainActivity extends AppCompatActivity {
 
         //Find butt
         Button butt = (Button) findViewById(R.id.poll_button);
+        //Put butt in chair, this could take a while
+
         //Reset 'running' flag, cancel Asynctask, reset button label
         isRunning = false;
         butt.setText("Begin Polling");
         mTask.cancel(true);
         //Reset Timer status
         setTimeUI(timeString, timeColor, Double.toString(timeDev));
-    }
+    }//reset
 
     public void transmit(View view){
         //Pull data from internal device storage and email
@@ -161,6 +195,7 @@ public class MainActivity extends AppCompatActivity {
         String logData = "";
         StringBuffer sb = new StringBuffer("");
 
+        //Buffer the read from local storage line by line so as to not overwhelm allocated device memory with a single "batch" of bytes
         try {
             FileInputStream fis = openFileInput("Clock_Log");
             InputStreamReader isr = new InputStreamReader(fis);
@@ -180,15 +215,16 @@ public class MainActivity extends AppCompatActivity {
 
         logData = sb.toString();
 
+        //Could transmit this serially to a server, but emailing this for the moment is easier (>^..^<)/
         Intent intent = new Intent(Intent.ACTION_SENDTO);
         intent.setData(Uri.parse("mailto:"));
-        intent.putExtra(Intent.EXTRA_EMAIL,new String[] { "tehmatty86@gmail.com" });
-        intent.putExtra(Intent.EXTRA_SUBJECT, "Clock Sync Data" );
+        intent.putExtra(Intent.EXTRA_EMAIL,new String[] { email });
+        intent.putExtra(Intent.EXTRA_SUBJECT, emailSubject );
         intent.putExtra(Intent.EXTRA_TEXT, logData);
         if(intent.resolveActivity(getPackageManager()) != null){
             startActivity(intent);
         }
-    }
+    }//transmit
 
 
     protected class TimeCop extends AsyncTask<Void, Void, Void> {
@@ -206,7 +242,7 @@ public class MainActivity extends AppCompatActivity {
                 //Poll System time
                 sysTime = System.currentTimeMillis();
                 //TO-DO: Poll NTP time
-                netTime = System.currentTimeMillis() + offset;
+                netTime = System.currentTimeMillis() + offset; //At present, NTP time is proving difficult to poll outside of TextClock, will have to manually generate events for now
                 offset = 0.0; //Reset Fudge
                 //Find delta between system and actual UTC
                 sysTimeDiff = Math.abs(sysTime - netTime);
@@ -220,16 +256,16 @@ public class MainActivity extends AppCompatActivity {
 
             }
             return null;
-        }
+        }//doInBackground
 
         @Override
         protected void onPostExecute(Void result) {
 
-        }
-    }
+        }//onPostExecute
+    }//Class TimeCop
 
 
-}
+}//Class MainActivity
 
 
 
