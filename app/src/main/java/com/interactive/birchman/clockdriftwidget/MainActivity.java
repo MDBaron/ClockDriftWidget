@@ -19,9 +19,8 @@ public class MainActivity extends AppCompatActivity {
     double sysTime = 0.0;
     double netTime = 0.0;
 
-    double lastCheck = 0.0;
     String timeString = "";
-    String timeColor = "#000000";
+    String timeColor = "#9E9E9E";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -33,7 +32,7 @@ public class MainActivity extends AppCompatActivity {
     /**
      * Poll Current system time, and look for network time.
      */
-    public void getTime(View view) {
+    public void pollTime(View view) {
         //Check and Set 'running' flag for this button
         Button butt = (Button) findViewById(R.id.poll_button);
 
@@ -57,13 +56,13 @@ public class MainActivity extends AppCompatActivity {
         //Switch statement for text Color selection according to "Drift"
         sysTimeDiff = sysTimeDiff/1000/60;
         if(sysTimeDiff > 5){
-            timeColor = "#";//red
+            timeColor = "#F44336";// Red -> More than 5 minutes
+        } else if(sysTimeDiff < 5 && sysTimeDiff > 1){
+            timeColor = "#4CAF50";// Green -> Less than 5 minutes
         } else if(sysTimeDiff < 1 && sysTimeDiff > 0){
-            timeColor = "#";//green
-        } else if(sysTimeDiff < 1 && sysTimeDiff > 0){
-            timeColor = "#";//yellow
+            timeColor = "#FFEB3B";// Yellow -> Less than a minute
         } else {
-            timeColor = "#";//gray
+            timeColor = "#9E9E9E";// Gray -> Unknown
         }
         setTimeUI(timeString, timeColor);
     }
@@ -79,29 +78,37 @@ public class MainActivity extends AppCompatActivity {
             currentTime.setBackgroundColor(Color.parseColor(c));
         }
     }
-
     );
 }
-
     public void fudgeTime(View view){
         //Add a substantial time event
         offset = 1000000;
     }
 
+    /**
+     * For debugging purposes
+     */
     public void reset(View view){
         //Reset time tracking for current session
+        offset = 0.0;
+        sysTimeDiff = 0.0;
+        netTime = 0.0;
+        sysTime = System.currentTimeMillis();
+        //Reset Timer status attributes
         SimpleDateFormat df = new SimpleDateFormat("HH:mm:ss");
         timeString = df.format(sysTime);
-        TextView currentTime = (TextView) findViewById(R.id.current_time);
-        currentTime.setText(String.valueOf(timeString));
-        //currentTime.setBackgroundColor(Color.parseColor(timeColor));
-        //Reset 'running' flag
+        timeColor = "#9E9E9E";
+
+        //Find butt
+        Button butt = (Button) findViewById(R.id.poll_button);
+        //Reset 'running' flag, cancel Asynctask, reset button label
         isRunning = false;
+        butt.setText("Begin Polling");
+        mTask.cancel(true);
+        //Reset Timer status
+        setTimeUI(timeString, timeColor);
     }
 
-    public void getCurrentTime(View view){
-        //poll the system time
-    }
 
     protected class TimeCop extends AsyncTask<Void, Void, Void> {
         /**
