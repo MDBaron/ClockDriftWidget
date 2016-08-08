@@ -6,17 +6,21 @@ import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.support.v7.app.AppCompatActivity;
+import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.text.SimpleDateFormat;
+import java.util.Random;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -29,6 +33,7 @@ public class MainActivity extends AppCompatActivity {
     //Work-horse variables
     int iterations = 0;
     double avg = 0.0;
+    double avgPool = 0.0;
     double offset = 0.0;
     double sysTimeDiff = 0.0;
     double sysTime = 0.0;
@@ -83,37 +88,57 @@ public class MainActivity extends AppCompatActivity {
         SimpleDateFormat df = new SimpleDateFormat("HH:mm:ss");
         timeString = df.format(sysTime);
         //save delta as ms for later use
-        timeDev = sysTimeDiff;
+        timeDev = Math.floor(sysTimeDiff);
         //Convert delta from millis -> seconds -> minutes
         sysTimeDiff = (sysTimeDiff/1000)/60;
+
+        //Calculate average
+        avg = getAvg(timeDev);
 
         //Switch statement for text Color selection according to "Drift"
         if(sysTimeDiff > tier2){
 
             // Red -> More than 5 minutes
             timeColor = "#F44336";
+
         } else if(sysTimeDiff < tier2 && sysTimeDiff > tier1){
 
             // Green -> Less than 5 minutes
             timeColor = "#4CAF50";
+
         } else if(sysTimeDiff < tier1 && sysTimeDiff > base){
 
             // Yellow -> Less than a minute
             timeColor = "#FFEB3B";
+
         } else {
 
             // Gray -> Unknown
             timeColor = "#9E9E9E";
         }
-        setTimeUI(timeString, timeColor, Double.toString(timeDev));
+
+        setTimeUI(timeString, timeColor, Double.toString(timeDev), avg);
     }//setTime
 
-    public void setTimeUI(String time, String color, String deviation) {
+    /*
+    * Calculate average of drift
+     */
+    public double getAvg(double plus){
+
+        iterations += 1;
+        avgPool += plus;
+
+        return (avgPool/iterations);
+
+    }//getAvg
+
+    public void setTimeUI(String time, String color, String deviation, Double avgDev) {
 
         //Need to 'final' these to call runOnUIThread()
         final String t = time;
         final String c = color;
         final String d = deviation;
+        final Double a = Math.floor(avgDev);
         runOnUiThread(new Runnable() {
              @Override
             public void run () {
@@ -125,7 +150,7 @@ public class MainActivity extends AppCompatActivity {
                  currentTime.setBackgroundColor(Color.parseColor(c));
                  //Parse data to screen and local storage
                  TextView logView = (TextView) findViewById(R.id.log_View);
-                 String log = "Current Drift: " + d + "milliseconds at " + t + "\n" + "Average Drift: " + avg + "\n";
+                 String log = "Current Drift: " + d + "ms at " + t + "\n" + "Average Drift: " + a + "ms\n";
                  logView.setText(log);
                  storeLog(log);
         }//run
@@ -157,7 +182,9 @@ public class MainActivity extends AppCompatActivity {
 
     public void fudgeTime(View view){
         //Add a substantial time event
-        offset = 1000000; //TO-DO: Could make this random to simulate time event data
+        Random r = new Random();
+        //Randomly generate double in range
+        offset = r.nextDouble() * (750000.00 - 100.00) + 100.00; //TO-DO: Could make this random to simulate time event data
     }//fudgeTime
 
     /**
@@ -167,11 +194,13 @@ public class MainActivity extends AppCompatActivity {
         //Reset time tracking for current session
         iterations = 0;
         avg = 0.0;
+        avgPool = 0.0;
         offset = 0.0;
         sysTimeDiff = 0.0;
         netTime = 0.0;
         timeDev = 0.0;
         sysTime = System.currentTimeMillis();
+
         //Reset Timer status attributes
         SimpleDateFormat df = new SimpleDateFormat("HH:mm:ss");
         timeString = df.format(sysTime);
@@ -185,8 +214,17 @@ public class MainActivity extends AppCompatActivity {
         isRunning = false;
         butt.setText("Begin Polling");
         mTask.cancel(true);
+
+        //Delete local file
+        String dir = getFilesDir().getAbsolutePath();
+        File f0 = new File(dir, fileName);
+        boolean d0 = f0.delete();
+        Log.w("File Deleted?: ", "Local File Deleted: " + dir + fileName + d0);
+        Toast t = new Toast(this);
+        Toast.makeText(getBaseContext(), "Local File Deleted...", Toast.LENGTH_SHORT).show();
+
         //Reset Timer status
-        setTimeUI(timeString, timeColor, Double.toString(timeDev));
+        setTimeUI(timeString, timeColor, Double.toString(timeDev), avg);
     }//reset
 
     public void transmit(View view){
@@ -246,10 +284,12 @@ public class MainActivity extends AppCompatActivity {
                 offset = 0.0; //Reset Fudge
                 //Find delta between system and actual UTC
                 sysTimeDiff = Math.abs(sysTime - netTime);
-                //Delay loop arbitrarily to prevent constant processing
+
+                //Set time data for this iteration
                 setTime(timeString, timeColor);
+                //Delay loop arbitrarily to prevent constant processing
                 try {
-                    Thread.sleep(1000);
+                    Thread.sleep(1000); //1 sec poll iterations seem to be enough of a delay
                 } catch (InterruptedException e) {
                     Thread.interrupted();
                 }
